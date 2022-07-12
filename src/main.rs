@@ -5,6 +5,9 @@ extern crate juniper;
 use std::io;
 use std::sync::Arc;
 
+use dotenv::dotenv;
+use std::env;
+
 use actix_web::{web, App, Error, HttpResponse, HttpServer};
 use futures::future::Future;
 use juniper::http::graphiql::graphiql_source;
@@ -16,6 +19,13 @@ mod schema;
 use crate::graphql_schema::{create_schema, Schema};
 
 fn main() -> io::Result<()> {
+    dotenv().ok();
+
+
+    let port = env::var("PORT").expect("PORT must be set");
+    let port : u16 = port.parse().unwrap();
+
+
     let schema = std::sync::Arc::new(create_schema());
     HttpServer::new(move || {
         App::new()
@@ -23,7 +33,7 @@ fn main() -> io::Result<()> {
             .service(web::resource("/graphql").route(web::post().to_async(graphql)))
             .service(web::resource("/graphiql").route(web::get().to(graphiql)))
     })
-    .bind("localhost:8080")?
+    .bind(("0.0.0.0", port))?
     .run()
 }
 
