@@ -18,6 +18,7 @@ impl Member {
 
 pub struct QueryRoot;
 
+// hardcoding some data here, but in a real world application, this data would be taken from a database
 #[juniper::object]
 impl QueryRoot {
   fn members() -> Vec<Member> {
