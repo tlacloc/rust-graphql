@@ -33,3 +33,9 @@ impl QueryRoot {
     ]
   }
 }
+
+pub type Schema = RootNode<'static, QueryRoot, EmptyMutation<()>>;
+
+pub fn create_schema() -> Schema {
+  Schema::new(QueryRoot {}, EmptyMutation::new())
+}
