@@ -54,7 +54,12 @@ fn graphql(
 }
 
 fn graphiql() -> HttpResponse {
-    let html = graphiql_source("http://localhost:8080/graphql");
+    dotenv().ok();
+
+    let port = env::var("PORT").expect("PORT must be set");
+    let port : u16 = port.parse().unwrap();
+
+    let html = graphiql_source(&format!("http://localhost:{}/graphql", port));
     HttpResponse::Ok()
         .content_type("text/html; charset=utf-8")
         .body(html)
