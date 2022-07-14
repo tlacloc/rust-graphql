@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate diesel;
+
 use std::{io, sync::Arc};
 
 use dotenv::dotenv;
@@ -12,9 +15,12 @@ use actix_web::{
 use actix_web_lab::respond::Html;
 use juniper::http::{graphiql::graphiql_source, GraphQLRequest};
 
+mod db;
 mod graphql_schema;
+mod schema;
 
-use crate::graphql_schema::{create_schema, Schema};
+use crate::db::establish_connection;
+use crate::graphql_schema::{create_schema, Context, Schema};
 
 /// GraphiQL playground UI
 #[get("/graphiql")]
@@ -24,8 +30,12 @@ async fn graphql_playground() -> impl Responder {
 
 /// GraphQL endpoint
 #[route("/graphql", method = "GET", method = "POST")]
-async fn graphql(st: web::Data<Schema>, data: web::Json<GraphQLRequest>) -> impl Responder {
-    let user = data.execute(&st, &()).await;
+async fn graphql(
+    st: web::Data<Schema>,
+    ctx: web::Data<Context>,
+    data: web::Json<GraphQLRequest>,
+) -> impl Responder {
+    let user = data.execute(&st, &ctx).await;
     HttpResponse::Ok().json(user)
 }
 
@@ -36,9 +46,12 @@ async fn main() -> io::Result<()> {
     dotenv().ok();
 
     let port = env::var("PORT").expect("PORT must be set");
-    let port : u16 = port.parse().unwrap();
+    let port: u16 = port.parse().unwrap();
+
+    let pool = establish_connection();
 
     // Create Juniper schema
+    let schema_context = Context { db: pool.clone() };
     let schema = Arc::new(create_schema());
 
     log::info!("starting HTTP server on port {}", port);
@@ -48,6 +61,7 @@ async fn main() -> io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::from(schema.clone()))
+            .app_data(Data::from(schema_context.clone()))
             .service(graphql)
             .service(graphql_playground)
             // the graphiql UI requires CORS to be enabled
