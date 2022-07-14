@@ -15,11 +15,13 @@ use actix_web::{
 use actix_web_lab::respond::Html;
 use juniper::http::{graphiql::graphiql_source, GraphQLRequest};
 
+mod schemas;
+
 mod db;
 mod graphql_schema;
 mod schema;
 
-use crate::db::establish_connection;
+use crate::db::{establish_connection, PgPool};
 use crate::graphql_schema::{create_schema, Context, Schema};
 
 /// GraphiQL playground UI
@@ -31,12 +33,25 @@ async fn graphql_playground() -> impl Responder {
 /// GraphQL endpoint
 #[route("/graphql", method = "GET", method = "POST")]
 async fn graphql(
-    st: web::Data<Schema>,
-    ctx: web::Data<Context>,
+    pool: web::Data<PgPool>,
+    schema: web::Data<Schema>,
     data: web::Json<GraphQLRequest>,
 ) -> impl Responder {
-    let user = data.execute(&st, &ctx).await;
-    HttpResponse::Ok().json(user)
+    let ctx = Context {
+        db: pool.get_ref().to_owned(),
+    };
+
+    let res = data.execute(&schema, &ctx).await;
+
+    Ok(HttpResponse::Ok().json(res))
+}
+
+
+pub fn register(config: &mut web::ServiceConfig) {
+    config
+        .app_data(web::Data::new(create_schema()))
+        .service(graphql)
+        .service(graphql_playground);
 }
 
 #[actix_web::main]
@@ -61,9 +76,8 @@ async fn main() -> io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(Data::from(schema.clone()))
-            .app_data(Data::from(schema_context.clone()))
-            .service(graphql)
-            .service(graphql_playground)
+            .app_data(Data::new(schema_context.clone()))
+            .configure(register)
             // the graphiql UI requires CORS to be enabled
             .wrap(Cors::permissive())
             .wrap(middleware::Logger::default())
