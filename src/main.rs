@@ -1,66 +1,53 @@
-#[macro_use]
-extern crate diesel;
-extern crate juniper;
+use std::{io, sync::Arc};
 
-use std::io;
-use std::sync::Arc;
-
-use dotenv::dotenv;
-use std::env;
-
-use actix_web::{web, App, Error, HttpResponse, HttpServer};
-use futures::future::Future;
-use juniper::http::graphiql::graphiql_source;
-use juniper::http::GraphQLRequest;
+use actix_cors::Cors;
+use actix_web::{
+    get, middleware, route,
+    web::{self, Data},
+    App, HttpResponse, HttpServer, Responder,
+};
+use actix_web_lab::respond::Html;
+use juniper::http::{graphiql::graphiql_source, GraphQLRequest};
 
 mod graphql_schema;
-mod schema;
 
 use crate::graphql_schema::{create_schema, Schema};
 
-fn main() -> io::Result<()> {
-    dotenv().ok();
+/// GraphiQL playground UI
+#[get("/graphiql")]
+async fn graphql_playground() -> impl Responder {
+    Html(graphiql_source("/graphql", None))
+}
 
+/// GraphQL endpoint
+#[route("/graphql", method = "GET", method = "POST")]
+async fn graphql(st: web::Data<Schema>, data: web::Json<GraphQLRequest>) -> impl Responder {
+    let user = data.execute(&st, &()).await;
+    HttpResponse::Ok().json(user)
+}
 
-    let port = env::var("PORT").expect("PORT must be set");
-    let port : u16 = port.parse().unwrap();
+#[actix_web::main]
+async fn main() -> io::Result<()> {
+    env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
+    // Create Juniper schema
+    let schema = Arc::new(create_schema());
 
-    let schema = std::sync::Arc::new(create_schema());
+    log::info!("starting HTTP server on port 8080");
+    log::info!("GraphiQL playground: http://localhost:8080/graphiql");
+
+    // Start HTTP server
     HttpServer::new(move || {
         App::new()
-            .data(schema.clone())
-            .service(web::resource("/graphql").route(web::post().to_async(graphql)))
-            .service(web::resource("/graphiql").route(web::get().to(graphiql)))
+            .app_data(Data::from(schema.clone()))
+            .service(graphql)
+            .service(graphql_playground)
+            // the graphiql UI requires CORS to be enabled
+            .wrap(Cors::permissive())
+            .wrap(middleware::Logger::default())
     })
-    .bind(("0.0.0.0", port))?
+    .workers(2)
+    .bind(("127.0.0.1", 8080))?
     .run()
-}
-
-fn graphql(
-    st: web::Data<Arc<Schema>>,
-    data: web::Json<GraphQLRequest>,
-) -> impl Future<Item = HttpResponse, Error = Error> {
-    web::block(move || {
-        let res = data.execute(&st, &());
-        Ok::<_, serde_json::error::Error>(serde_json::to_string(&res)?)
-    })
-    .map_err(Error::from)
-    .and_then(|user| {
-        Ok(HttpResponse::Ok()
-            .content_type("application/json")
-            .body(user))
-    })
-}
-
-fn graphiql() -> HttpResponse {
-    dotenv().ok();
-
-    let port = env::var("PORT").expect("PORT must be set");
-    let port : u16 = port.parse().unwrap();
-
-    let html = graphiql_source(&format!("http://localhost:{}/graphql", port));
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(html)
+    .await
 }

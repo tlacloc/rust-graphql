@@ -1,123 +1,62 @@
-extern crate dotenv;
+use juniper::FieldResult;
+use juniper::{EmptySubscription, RootNode};
 
-use std::env;
+#[derive(GraphQLEnum)]
+enum Episode {
+    NewHope,
+    Empire,
+    Jedi,
+}
 
-use diesel::pg::PgConnection;
-use diesel::prelude::*;
-use dotenv::dotenv;
+use juniper::{GraphQLEnum, GraphQLInputObject, GraphQLObject};
 
-use juniper::RootNode;
+#[derive(GraphQLObject)]
+#[graphql(description = "A humanoid creature in the Star Wars universe")]
+struct Human {
+    id: String,
+    name: String,
+    appears_in: Vec<Episode>,
+    home_planet: String,
+}
 
-use crate::schema::members;
+#[derive(GraphQLInputObject)]
+#[graphql(description = "A humanoid creature in the Star Wars universe")]
+struct NewHuman {
+    name: String,
+    appears_in: Vec<Episode>,
+    home_planet: String,
+}
 
 pub struct QueryRoot;
 
-fn establish_connection() -> PgConnection {
-  dotenv().ok();
-
-  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-  PgConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
-}
-
-#[juniper::object]
+#[juniper::graphql_object]
 impl QueryRoot {
-  fn members(&self) -> Vec<Member> {
-    use crate::schema::members::dsl::*;
-    let connection = establish_connection();
-    members
-      .limit(100)
-      .load::<Member>(&connection)
-      .expect("Error loading members")
-  }
-
-  fn teams() -> Vec<Team> {
-    use crate::schema::teams::dsl::*;
-    let connection = establish_connection();
-    teams
-      .limit(100)
-      .load::<Team>(&connection)
-      .expect("Error loading teams")
-  }
+    fn human(_id: String) -> FieldResult<Human> {
+        Ok(Human {
+            id: "1234".to_owned(),
+            name: "Luke".to_owned(),
+            appears_in: vec![Episode::NewHope],
+            home_planet: "Mars".to_owned(),
+        })
+    }
 }
 
 pub struct MutationRoot;
 
-#[juniper::object]
+#[juniper::graphql_object]
 impl MutationRoot {
-  fn create_member(data: NewMember) -> Member {
-    let connection = establish_connection();
-    diesel::insert_into(members::table)
-      .values(&data)
-      .get_result(&connection)
-      .expect("Error saving new post")
-  }
+    fn create_human(new_human: NewHuman) -> FieldResult<Human> {
+        Ok(Human {
+            id: "1234".to_owned(),
+            name: new_human.name,
+            appears_in: new_human.appears_in,
+            home_planet: new_human.home_planet,
+        })
+    }
 }
 
-#[derive(juniper::GraphQLInputObject, Insertable)]
-#[table_name = "members"]
-pub struct NewMember {
-  pub name: String,
-  pub knockouts: i32,
-  pub team_id: i32,
-}
-
-#[derive(Queryable)]
-struct Member {
-  pub id: i32,
-  pub name: String,
-  pub knockouts: i32,
-  pub team_id: i32,
-}
-
-#[juniper::object(description = "A member of a team")]
-impl Member {
-  pub fn id(&self) -> i32 {
-    self.id
-  }
-
-  pub fn name(&self) -> &str {
-    self.name.as_str()
-  }
-
-  pub fn knockouts(&self) -> i32 {
-    self.knockouts
-  }
-
-  pub fn team_id(&self) -> i32 {
-    self.team_id
-  }
-}
-
-#[derive(Queryable)]
-struct Team {
-  pub id: i32,
-  pub name: String,
-}
-
-#[juniper::object(description = "A team of members")]
-impl Team {
-  pub fn id(&self) -> i32 {
-    self.id
-  }
-
-  pub fn name(&self) -> &str {
-    self.name.as_str()
-  }
-
-  pub fn team(&self) -> Vec<Member> {
-    use crate::schema::members::dsl::*;
-    let connection = establish_connection();
-
-    members
-      .limit(100)
-      .filter(team_id.eq(self.id))
-      .load::<Member>(&connection)
-      .expect("Error loading members")
-  }
-}
-
-pub type Schema = RootNode<'static, QueryRoot, MutationRoot>;
+pub type Schema = RootNode<'static, QueryRoot, MutationRoot, EmptySubscription>;
 
 pub fn create_schema() -> Schema {
-  Schema::new(QueryRoot {}, MutationRoot {})
+    Schema::new(QueryRoot {}, MutationRoot {}, EmptySubscription::new())
 }
