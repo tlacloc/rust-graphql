@@ -1,123 +1,66 @@
-extern crate dotenv;
-
-use std::env;
-
-use diesel::pg::PgConnection;
 use diesel::prelude::*;
-use dotenv::dotenv;
 
-use juniper::RootNode;
+use juniper::{
+    graphql_object, EmptySubscription, FieldResult, RootNode,
+};
 
-use crate::schema::members;
+use crate::schema::{members, teams};
+use crate::schemas::{
+    member::{Member, MemberInput},
+    team::{Team, TeamInput},
+};
+
+use crate::db::PgPool;
+
+pub struct Context {
+    pub db: PgPool,
+}
+
+impl juniper::Context for Context {}
 
 pub struct QueryRoot;
 
-fn establish_connection() -> PgConnection {
-  dotenv().ok();
-
-  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-  PgConnection::establish(&database_url).expect(&format!("Error connecting to {}", database_url))
-}
-
-#[juniper::object]
+#[graphql_object(Context = Context)]
 impl QueryRoot {
-  fn members(&self) -> Vec<Member> {
-    use crate::schema::members::dsl::*;
-    let connection = establish_connection();
-    members
-      .limit(100)
-      .load::<Member>(&connection)
-      .expect("Error loading members")
-  }
+    #[graphql(description = "List of all members")]
+    fn members(&self, context: &Context) -> FieldResult<Vec<Member>> {
+        let conn = &context.db.get()?;
+        let members = members::table.load::<Member>(conn)?;
+        Ok(members)
+    }
 
-  fn teams() -> Vec<Team> {
-    use crate::schema::teams::dsl::*;
-    let connection = establish_connection();
-    teams
-      .limit(100)
-      .load::<Team>(&connection)
-      .expect("Error loading teams")
-  }
+    #[graphql(description = "List of all teams")]
+    fn teams(&self, context: &Context) -> FieldResult<Vec<Team>> {
+        let conn = &context.db.get()?;
+        let teams = teams::table.load::<Team>(conn)?;
+        Ok(teams)
+    }
 }
 
 pub struct MutationRoot;
 
-#[juniper::object]
+#[graphql_object(Context = Context)]
 impl MutationRoot {
-  fn create_member(data: NewMember) -> Member {
-    let connection = establish_connection();
-    diesel::insert_into(members::table)
-      .values(&data)
-      .get_result(&connection)
-      .expect("Error saving new post")
-  }
+    pub fn create_member(context: &Context, input: MemberInput) -> FieldResult<Member> {
+        let conn = &context.db.get()?;
+        let member = diesel::insert_into(members::table)
+            .values(&input)
+            .get_result::<Member>(conn)?;
+        Ok(member)
+    }
+
+    pub fn create_team(context: &Context, input: TeamInput) -> FieldResult<Team> {
+        let conn = &context.db.get()?;
+        let team = diesel::insert_into(teams::table)
+            .values(&input)
+            .get_result::<Team>(conn)?;
+        Ok(team)
+    }
+
 }
 
-#[derive(juniper::GraphQLInputObject, Insertable)]
-#[table_name = "members"]
-pub struct NewMember {
-  pub name: String,
-  pub knockouts: i32,
-  pub team_id: i32,
-}
-
-#[derive(Queryable)]
-struct Member {
-  pub id: i32,
-  pub name: String,
-  pub knockouts: i32,
-  pub team_id: i32,
-}
-
-#[juniper::object(description = "A member of a team")]
-impl Member {
-  pub fn id(&self) -> i32 {
-    self.id
-  }
-
-  pub fn name(&self) -> &str {
-    self.name.as_str()
-  }
-
-  pub fn knockouts(&self) -> i32 {
-    self.knockouts
-  }
-
-  pub fn team_id(&self) -> i32 {
-    self.team_id
-  }
-}
-
-#[derive(Queryable)]
-struct Team {
-  pub id: i32,
-  pub name: String,
-}
-
-#[juniper::object(description = "A team of members")]
-impl Team {
-  pub fn id(&self) -> i32 {
-    self.id
-  }
-
-  pub fn name(&self) -> &str {
-    self.name.as_str()
-  }
-
-  pub fn team(&self) -> Vec<Member> {
-    use crate::schema::members::dsl::*;
-    let connection = establish_connection();
-
-    members
-      .limit(100)
-      .filter(team_id.eq(self.id))
-      .load::<Member>(&connection)
-      .expect("Error loading members")
-  }
-}
-
-pub type Schema = RootNode<'static, QueryRoot, MutationRoot>;
+pub type Schema = RootNode<'static, QueryRoot, MutationRoot, EmptySubscription<Context>>;
 
 pub fn create_schema() -> Schema {
-  Schema::new(QueryRoot {}, MutationRoot {})
+    Schema::new(QueryRoot, MutationRoot, EmptySubscription::new())
 }
