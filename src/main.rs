@@ -9,7 +9,7 @@ use std::env;
 use actix_cors::Cors;
 use actix_web::{
     get, middleware, route,
-    web::{self, Data},
+    web::{self, Data}, Error,
     App, HttpResponse, HttpServer, Responder,
 };
 use actix_web_lab::respond::Html;
@@ -36,10 +36,11 @@ async fn graphql(
     pool: web::Data<PgPool>,
     schema: web::Data<Schema>,
     data: web::Json<GraphQLRequest>,
-) -> impl Responder {
-    let ctx = Context {
-        db: pool.get_ref().to_owned(),
-    };
+) -> Result<HttpResponse, Error> {
+
+
+    let pool = establish_connection();
+    let ctx = Context { db: pool.clone() };
 
     let res = data.execute(&schema, &ctx).await;
 
@@ -75,8 +76,9 @@ async fn main() -> io::Result<()> {
     // Start HTTP server
     HttpServer::new(move || {
         App::new()
-            .app_data(Data::from(schema.clone()))
-            .app_data(Data::new(schema_context.clone()))
+            // .app_data(Data::from(schema.clone()))
+            // .app_data(Data::new(schema_context.clone()))
+            .app_data(Data::new(pool.clone()))
             .configure(register)
             // the graphiql UI requires CORS to be enabled
             .wrap(Cors::permissive())
