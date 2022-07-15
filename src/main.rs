@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate diesel;
 
-use std::{io, sync::Arc};
+use std::io;
 
 use dotenv::dotenv;
 use std::env;
@@ -33,7 +33,7 @@ async fn graphql_playground() -> impl Responder {
 /// GraphQL endpoint
 #[route("/graphql", method = "GET", method = "POST")]
 async fn graphql(
-    pool: web::Data<PgPool>,
+    _pool: web::Data<PgPool>,
     schema: web::Data<Schema>,
     data: web::Json<GraphQLRequest>,
 ) -> Result<HttpResponse, Error> {
@@ -66,18 +66,12 @@ async fn main() -> io::Result<()> {
 
     let pool = establish_connection();
 
-    // Create Juniper schema
-    let schema_context = Context { db: pool.clone() };
-    let schema = Arc::new(create_schema());
-
     log::info!("starting HTTP server on port {}", port);
     log::info!("GraphiQL playground: http://localhost:{}/graphiql", port);
 
     // Start HTTP server
     HttpServer::new(move || {
         App::new()
-            // .app_data(Data::from(schema.clone()))
-            // .app_data(Data::new(schema_context.clone()))
             .app_data(Data::new(pool.clone()))
             .configure(register)
             // the graphiql UI requires CORS to be enabled

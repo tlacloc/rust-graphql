@@ -13,7 +13,7 @@ pub struct Member {
 }
 
 #[derive(GraphQLInputObject, Insertable, Debug)]
-#[graphql(description = "A humanoid creature in the Star Wars universe")]
+#[graphql(description = "A member of a team")]
 #[table_name = "members"]
 pub struct MemberInput {
     name: String,

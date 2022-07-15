@@ -1,11 +1,10 @@
-use diesel::pg::PgConnection;
 use diesel::prelude::*;
 
 use juniper::{
-    graphql_object, graphql_value, EmptySubscription, FieldError, FieldResult, RootNode,
+    graphql_object, EmptySubscription, FieldResult, RootNode,
 };
 
-use crate::schema::members;
+use crate::schema::{members, teams};
 use crate::schemas::{
     member::{Member, MemberInput},
     team::{Team, TeamInput},
@@ -29,6 +28,13 @@ impl QueryRoot {
         let members = members::table.load::<Member>(conn)?;
         Ok(members)
     }
+
+    #[graphql(description = "List of all teams")]
+    fn teams(&self, context: &Context) -> FieldResult<Vec<Team>> {
+        let conn = &context.db.get()?;
+        let teams = teams::table.load::<Team>(conn)?;
+        Ok(teams)
+    }
 }
 
 pub struct MutationRoot;
@@ -42,6 +48,15 @@ impl MutationRoot {
             .get_result::<Member>(conn)?;
         Ok(member)
     }
+
+    pub fn create_team(context: &Context, input: TeamInput) -> FieldResult<Team> {
+        let conn = &context.db.get()?;
+        let team = diesel::insert_into(teams::table)
+            .values(&input)
+            .get_result::<Team>(conn)?;
+        Ok(team)
+    }
+
 }
 
 pub type Schema = RootNode<'static, QueryRoot, MutationRoot, EmptySubscription<Context>>;
