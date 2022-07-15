@@ -4,7 +4,7 @@ use crate::schema::members;
 use juniper::{graphql_object, GraphQLInputObject};
 
 /// Member
-#[derive(Default, Debug)]
+#[derive(Default, Queryable, Debug)]
 pub struct Member {
     id: i32,
     name: String,
